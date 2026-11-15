@@ -9,7 +9,8 @@ There is no backend, no database server, no account, and **no AI API key**. The
 language understanding is a rule-based parser that ships with the page, and the
 data is seeded into IndexedDB on first load.
 
-**Live demo:** https://nomoshkar.github.io/NLP_hackathon/
+**Deploy target:** https://nomoshkar.github.io/NLP_hackathon/ — see
+[Deploying](#deploying) below to publish it.
 
 > The demo data is synthetic. Every session starts from the same seeded ledger
 > and changes you make stay in your browser only.
@@ -75,6 +76,19 @@ and behaves identically offline.
 `compromise` (vendored) is used as a light tokenizer and part-of-speech helper.
 The intent routing itself is explicit rules, so the behaviour is inspectable and
 testable.
+
+## Deploying
+
+GitHub Pages serves the `docs/` folder directly; there is nothing to build.
+
+1. Merge this branch into `main`.
+2. In the repository, open **Settings → Pages**.
+3. Under **Build and deployment**, set **Source** to *Deploy from a branch*, then
+   choose branch `main` and folder `/docs`. Save.
+
+The site appears at `https://<owner>.github.io/NLP_hackathon/` after a minute or
+two. The committed `docs/.nojekyll` file stops Jekyll from processing the folder,
+and every asset path is relative, so it works from that subpath unchanged.
 
 ## Running it locally
 
