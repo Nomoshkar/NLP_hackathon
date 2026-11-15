@@ -28,6 +28,12 @@ data is seeded into IndexedDB on first load.
 | *"What is my cash flow?"* | Money in versus money out, month by month |
 | *"Compare this month to last month"* | Category-level deltas |
 | *"Show me my recent transactions"* | The matching rows in the ledger table |
+| *"What did I spend on shopping?"* | A category total, even without a time window |
+| *"Groceries last week"* | A category total scoped to a relative window |
+| *"Show me transactions over $100"* | The ledger filtered to amounts above a threshold |
+| *"Do I have any pending transactions?"* | Pending charges, or a clear "none" |
+| *"What is my average spend?"* | The average monthly spend over recent months |
+| *"Set my dining budget to 400"* | A budget update that persists to the ledger |
 | *"Transfer $200 from checking to savings"* | A confirmed transfer, with balances updated |
 | *"Deposit $500 into savings"* | A confirmed deposit |
 | *"Withdraw $80"* | A confirmed withdrawal |
@@ -50,9 +56,16 @@ whenever the ledger changes.
 - **Balance trend** — a 3/6/12-month cash-position chart.
 - **Where it goes** — spend by category for the selected window.
 - **Monthly cash flow** — in versus out for the last six months.
-- **Budget watch** — per-category progress against budgeted amounts.
+- **Budget watch** — per-category progress against budgeted amounts, with an
+  inline edit control on each row.
 - **Ledger** — a searchable, filterable, sortable transaction table grouped by
-  day, with running balances and pending flags.
+  day, with running balances and pending flags. Filters cover account, category,
+  status, and an amount comparison (over / under / exactly). Click any row to
+  open a detail drawer, and export whatever the table currently shows as CSV.
+
+The dashboard also has a light/dark theme toggle, a print stylesheet so the
+ledger prints as a statement, and a responsive layout: on a phone the assistant
+dock starts folded to a labelled pill so the dashboard has the screen.
 
 ## How the language layer works
 

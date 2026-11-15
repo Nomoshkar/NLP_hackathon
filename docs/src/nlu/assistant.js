@@ -94,6 +94,34 @@ function sparkBlock(points) {
   return { type: 'spark', points };
 }
 
+/** Human phrasing for an amount comparison, e.g. "over $100.00". */
+const FILTER_WORDS = { gt: 'over', gte: 'at least', lt: 'under', lte: 'at most', eq: 'exactly' };
+
+function describeFilter(filter) {
+  if (!filter) return '';
+  return `${FILTER_WORDS[filter.op] || ''} ${formatMoney(filter.minor)}`.trim();
+}
+
+function applyAmountFilter(rows, filter) {
+  if (!filter) return rows;
+  const { op, minor } = filter;
+  return rows.filter((t) => {
+    switch (op) {
+      case 'gt': return t.amountMinor > minor;
+      case 'gte': return t.amountMinor >= minor;
+      case 'lt': return t.amountMinor < minor;
+      case 'lte': return t.amountMinor <= minor;
+      case 'eq': return t.amountMinor === minor;
+      default: return true;
+    }
+  });
+}
+
+function applyStatusFilter(rows, status) {
+  if (!status) return rows;
+  return rows.filter((t) => (t.status || 'posted') === status);
+}
+
 /* ------------------------------------------------------------------ */
 /* Handlers                                                            */
 /* ------------------------------------------------------------------ */
@@ -511,25 +539,128 @@ function handleCompare(parsed) {
   );
 }
 
+/**
+ * "What is my average spend" — the habitual monthly rate, with the spread so
+ * the number has context rather than being a single unexplained figure.
+ */
+function handleAverageSpend(parsed) {
+  const months = 6;
+  const series = lastNMonths(months, parsed.now).map((m) => ({
+    label: formatMonth(m.ts).split(' ')[0],
+    ts: m.ts,
+    value: spendTransactions(inRange({ start: m.start, end: m.end })).reduce((a, t) => a + t.amountMinor, 0),
+  }));
+
+  const active = series.filter((s) => s.value > 0);
+  const average = active.length ? Math.round(active.reduce((a, s) => a + s.value, 0) / active.length) : 0;
+  const highest = series.reduce((a, s) => (s.value > a.value ? s : a), series[0] || { value: 0 });
+  const lowest = active.reduce((a, s) => (s.value < a.value ? s : a), active[0] || { value: 0 });
+
+  const byCat = byCategory(spendTransactions(inRange({ start: series[0]?.ts ?? parsed.now, end: parsed.now })));
+  const top = byCat.slice(0, 5);
+  const topTotal = byCat.reduce((a, c) => a + c.totalMinor, 0) || 1;
+
+  return reply(
+    `You've averaged ${formatMoney(average)} a month over the last ${pluralize(months, 'month')}. Highest was ${formatMoney(highest.value)} in ${highest.label}, lowest ${formatMoney(lowest.value)} in ${lowest.label}.`,
+    {
+      blocks: [
+        kpiBlock([
+          { label: 'Monthly average', value: formatMoney(average) },
+          { label: 'Busiest month', value: formatMoney(highest.value) },
+          { label: 'Quietest month', value: formatMoney(lowest.value) },
+        ]),
+        { type: 'subhead', text: `Monthly spend, last ${months} months` },
+        barsBlock(series.map((s) => ({ label: s.label, value: s.value, display: formatMoney(s.value) }))),
+        { type: 'subhead', text: 'Where it goes' },
+        barsBlock(top.map((c) => ({
+          label: categoryById(c.categoryId).label,
+          value: Math.round((c.totalMinor / topTotal) * 100),
+          display: formatMoney(c.totalMinor),
+          color: categoryById(c.categoryId).color,
+        }))),
+      ],
+      actions: ['Compare to last month', 'Show my subscriptions', 'Am I over budget?'],
+      view: { kind: 'transactions', range: { start: series[0]?.ts ?? parsed.now, end: parsed.now, label: `the last ${months} months` } },
+    },
+  );
+}
+
+/** "Set my dining budget to 400" — adjust a category budget and persist it. */
+async function handleSetBudget(parsed) {
+  const { persistCategory } = await import('../db/database.js');
+  const amount = parsed.amountMinor;
+  if (!parsed.category) {
+    const options = store.categories.filter((c) => c.kind !== 'income').map((c) => c.label).slice(0, 6);
+    return reply('Which category should I set a budget for?', {
+      blocks: [{ type: 'examples', items: options.map((o) => `Set my ${o.toLowerCase()} budget to 300`) }],
+      actions: options.map((o) => `Set my ${o.toLowerCase()} budget to 300`),
+      pending: { kind: 'set_budget' },
+    });
+  }
+  if (!amount) {
+    return reply(`What should the ${categoryById(parsed.category).label.toLowerCase()} budget be?`, {
+      blocks: [{ type: 'examples', items: ['300', '500', '1000'] }],
+      pending: { kind: 'set_budget', category: parsed.category },
+    });
+  }
+
+  const category = categoryById(parsed.category);
+  const previous = category.budgetMinor || 0;
+  await persistCategory({ ...category, budgetMinor: amount });
+
+  const spent = spendTransactions(inRange(periodRange(PERIOD.THIS_MONTH, parsed.now)))
+    .filter((t) => t.category === parsed.category)
+    .reduce((a, t) => a + t.amountMinor, 0);
+  const pct = amount ? Math.round((spent / amount) * 100) : 0;
+
+  return reply(
+    `Set the ${category.label.toLowerCase()} budget to ${formatMoney(amount)}${previous ? ` (was ${formatMoney(previous)})` : ''}. You've spent ${formatMoney(spent)} so far this month — ${pct}% of it.`,
+    {
+      tone: 'success',
+      blocks: [
+        kpiBlock([
+          { label: 'New budget', value: formatMoney(amount) },
+          { label: 'Spent this month', value: formatMoney(spent) },
+          { label: 'Used', value: `${pct}%`, tone: pct > 100 ? 'negative' : 'positive' },
+        ]),
+      ],
+      actions: ['Am I over budget?', 'Show this month by category'],
+      view: { kind: 'budget' },
+      affectsData: true,
+      receipt: { kind: 'budget' },
+    },
+  );
+}
+
 function handleListTransactions(parsed) {
-  const range = parsed.range || periodRange(PERIOD.THIS_MONTH, parsed.now);
+  // An amount filter ("charges over $100") is usually a hunt across history, so
+  // widen the default window; otherwise stay in the current month.
+  const range = parsed.range
+    || periodRange(parsed.amountFilter ? PERIOD.LAST_12_MONTHS : PERIOD.THIS_MONTH, parsed.now);
   let rows = inRange(range);
   if (parsed.accountIds.length === 1) rows = rows.filter((t) => t.accountId === parsed.accountIds[0]);
   if (parsed.category) rows = rows.filter((t) => t.category === parsed.category);
   if (parsed.merchant) rows = merchantMatches(rows, parsed.merchant);
+  rows = applyStatusFilter(rows, parsed.status);
+  rows = applyAmountFilter(rows, parsed.amountFilter);
 
   rows.sort((a, b) => b.ts - a.ts);
   const total = rows.reduce((acc, t) => acc + (t.direction === 'credit' ? t.amountMinor : -t.amountMinor), 0);
+  const qualifier = [describeFilter(parsed.amountFilter), parsed.status].filter(Boolean).join(' ');
 
   if (!rows.length) {
-    return reply(`I don't see any transactions matching that ${range.label}.`, {
+    return reply(`I don't see any ${qualifier ? `${qualifier} ` : ''}transactions ${range.label}.`.replace(/\s+/g, ' '), {
       actions: ['Show all transactions', 'Show last month'],
       view: { kind: 'transactions', range: { start: range.start, end: range.end, label: range.label } },
     });
   }
 
+  const headline = qualifier
+    ? `${pluralize(rows.length, 'transaction')} ${qualifier} ${range.label}, worth ${formatMoney(total, { signed: true })} net.`
+    : `${pluralize(rows.length, 'transaction')} ${range.label}, worth ${formatMoney(total, { signed: true })} net.`;
+
   return reply(
-    `${pluralize(rows.length, 'transaction')} ${range.label}, worth ${formatMoney(total, { signed: true })} net. Showing the most recent ${Math.min(rows.length, MAX_ROWS)}.`,
+    `${headline} Showing the most recent ${Math.min(rows.length, MAX_ROWS)}.`,
     {
       blocks: [rowsBlock(rows), rows.length > MAX_ROWS ? { type: 'note', text: `+ ${rows.length - MAX_ROWS} more in the ledger below.` } : null].filter(Boolean),
       actions: ['Search for a merchant', 'How much did I spend?'],
@@ -538,6 +669,8 @@ function handleListTransactions(parsed) {
         accountId: parsed.accountIds.length === 1 ? parsed.accountIds[0] : null,
         category: parsed.category || null,
         range: { start: range.start, end: range.end, label: range.label },
+        amountFilter: parsed.amountFilter || null,
+        status: parsed.status || null,
       },
     },
   );
@@ -545,31 +678,46 @@ function handleListTransactions(parsed) {
 
 function handleSearch(parsed) {
   const range = parsed.range || periodRange(PERIOD.LAST_12_MONTHS, parsed.now);
-  const scope = inRange(range);
+  let scope = inRange(range);
+
+  // "any pending transactions" is a status query, not a keyword search.
+  if (parsed.status) {
+    scope = applyStatusFilter(scope, parsed.status);
+  }
+
   const terms = [];
   if (parsed.merchant) terms.push(parsed.merchant);
   terms.push(...parsed.keywords);
 
   let rows = terms.length ? keywordMatches(scope, terms) : [];
   if (!rows.length && parsed.category) rows = scope.filter((t) => t.category === parsed.category);
+  // A pure status query ("pending transactions") has no keywords to match on.
+  if (!rows.length && parsed.status && !parsed.merchant) rows = scope;
   rows.sort((a, b) => b.ts - a.ts);
 
   const query = parsed.merchant || parsed.keywords.join(', ');
   if (!rows.length) {
+    const what = parsed.status ? `${parsed.status} transactions` : `"${query}"`;
     return reply(
-      `Nothing in the ledger matches "${query}". Try a merchant like "Sable Coffee" or a category like "dining".`,
+      `Nothing in the ledger matches ${what}. Try a merchant like "Sable Coffee" or a category like "dining".`,
       { actions: ['Show recent transactions', 'Show subscriptions'] },
     );
   }
 
   const spend = rows.filter((t) => t.direction === 'debit');
   const total = spend.reduce((acc, t) => acc + t.amountMinor, 0);
+  const subject = parsed.status && !query ? `${parsed.status} transactions` : `"${query}"`;
   return reply(
-    `Found ${pluralize(rows.length, 'match', 'matches')} for "${query}" in ${range.label} totalling ${formatMoney(total)}.`,
+    `Found ${pluralize(rows.length, 'match', 'matches')} for ${subject} in ${range.label} totalling ${formatMoney(total)}.`,
     {
       blocks: [rowsBlock(rows)],
       actions: ['Show all transactions'],
-      view: { kind: 'transactions', search: query, range: { start: range.start, end: range.end, label: range.label } },
+      view: {
+        kind: 'transactions',
+        search: query,
+        status: parsed.status || null,
+        range: { start: range.start, end: range.end, label: range.label },
+      },
     },
   );
 }
@@ -791,6 +939,8 @@ const HANDLERS = {
   net_worth: handleNetWorth,
   account_summary: handleAccountSummary,
   spend_summary: handleSpendSummary,
+  average_spend: handleAverageSpend,
+  set_budget: handleSetBudget,
   income_summary: handleIncomeSummary,
   cashflow: handleCashflow,
   budget_status: handleBudget,
@@ -809,17 +959,35 @@ const HANDLERS = {
 
 /** Resolve a short follow-up like "$250" or "savings" using the pending action. */
 function mergePending(parsed, pending) {
-  if (!pending) return parsed;
+  if (!pending) return { merged: parsed, filled: false };
   const merged = { ...parsed };
-  if (!merged.amountMinor && parsed.amountMinor) merged.amountMinor = parsed.amountMinor;
+  let filled = false;
+
+  const hadAmount = Boolean(parsed.amountMinor);
   if (pending.accountId && !merged.accountIds.length) merged.accountIds = [pending.accountId];
+  if (pending.category && !merged.category) merged.category = pending.category;
   if (pending.fromAccountId) merged.fromAccountId = parsed.fromAccountId || pending.fromAccountId;
   if (pending.toAccountId) merged.toAccountId = parsed.toAccountId || pending.toAccountId;
   if (parsed.accountIds.length && pending.kind === 'transfer') {
     const mentioned = parsed.accountIds[0];
     if (mentioned !== pending.fromAccountId) merged.toAccountId = mentioned;
   }
-  return merged;
+
+  // Did the reply itself supply a slot the question was waiting on?
+  if (hadAmount) filled = true;
+  if (pending.kind === 'set_budget' && parsed.category) filled = true;
+  return { merged, filled };
+}
+
+/** Which slot each pending question still needs, given the merged parse. */
+function missingSlot(pending, merged) {
+  if (pending.kind === 'set_budget') {
+    if (!merged.category) return 'category';
+    if (!merged.amountMinor) return 'amount';
+    return null;
+  }
+  if (!merged.amountMinor) return 'amount';
+  return null;
 }
 
 /**
@@ -832,11 +1000,19 @@ export async function handle(text, opts = {}) {
   const now = opts.now ?? Date.now();
   const parsed = parse(text, { accounts: store.accounts, categories: store.categories, now });
 
-  // A pending slot-filling question is resolved before anything else.
+  // A pending slot-filling question is resolved before anything else, so a bare
+  // "dining" or "$250" answers the question instead of being read as a new query.
   if (opts.pending && parsed.intent !== 'undo' && parsed.intent !== 'reset') {
-    const merged = mergePending(parsed, opts.pending);
-    const stillMissing = !merged.amountMinor;
-    if (!stillMissing) {
+    const { merged, filled } = mergePending(parsed, opts.pending);
+    const missing = missingSlot(opts.pending, merged);
+    if (!missing) {
+      const handler = HANDLERS[opts.pending.kind];
+      const result = await handler({ ...merged, intent: opts.pending.kind });
+      return { ...result, parsed: merged, resolvedPending: true };
+    }
+    // The reply filled the pending slot but more is still needed: let the
+    // pending handler ask for the next one.
+    if (filled) {
       const handler = HANDLERS[opts.pending.kind];
       const result = await handler({ ...merged, intent: opts.pending.kind });
       return { ...result, parsed: merged, resolvedPending: true };

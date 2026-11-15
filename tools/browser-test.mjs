@@ -39,6 +39,13 @@ const SCRIPT = [
   { say: 'show me my recent transactions', expect: /transaction/i, shot: '10-transactions' },
   { say: 'withdraw $999,999 from savings', expect: /only has|can't/i, shot: '11-insufficient' },
   { say: 'asdfghjkl', expect: /not sure how to handle/i, shot: '12-unknown' },
+  // Regression coverage for the phrasing gaps found in the UI audit.
+  { say: 'what did I spend on shopping', expect: /shopping/i, shot: '13-spend-on-category' },
+  { say: 'groceries last week', expect: /groceries/i, shot: '14-category-window' },
+  { say: 'show me transactions over $100', expect: /over \$100\.00/i, shot: '15-amount-filter' },
+  { say: 'what is my average spend', expect: /averaged/i, shot: '16-average-spend' },
+  { say: 'do I have any pending transactions', expect: /pending|transaction/i, shot: '17-pending' },
+  { say: 'set my dining budget to 400', expect: /dining budget to \$400\.00/i, shot: '18-budget-set' },
 ];
 
 async function connect(wsUrl) {
@@ -99,6 +106,10 @@ async function main() {
   await client.send('Runtime.enable');
   await client.send('Log.enable');
   await client.send('Page.enable');
+  // Always exercise the files on disk: a stale ES-module cache makes the test
+  // report results for code that is no longer there.
+  await client.send('Network.enable');
+  await client.send('Network.setCacheDisabled', { cacheDisabled: true });
   await client.send('Emulation.setDeviceMetricsOverride', {
     width: WIDTH,
     height: HEIGHT,

@@ -21,7 +21,14 @@ export const INTENT_PATTERNS = [
 
   // ---- summaries --------------------------------------------------------
   { intent: 'account_summary', weight: 5, patterns: [/\b(account summary|summary of my account|overview|snapshot|dashboard|how am i doing)\b/] },
-  { intent: 'spend_summary', weight: 6, patterns: [/\b(how much (did|have) i (spend|spent)|spending|spent (on|this|last)|where (is|did) my money go|top (categories|spend|expenses))\b/] },
+  { intent: 'spend_summary', weight: 6, patterns: [/\b(how much (did|have) i (spend|spent)|spending|spent (on|this|last)|spend (on|this|last)|where (is|did) my money go|top (categories|spend|expenses))\b/] },
+  // "what did I spend on X", "what did I buy" — a spend question without "how much".
+  { intent: 'spend_summary', weight: 6, patterns: [/\bwhat (did|have) i (spend|spent|buy|bought|pay for|purchase|purchased)\b/] },
+  { intent: 'spend_summary', weight: 3, patterns: [/\b(cost|costs|paid|pay for)\b/] },
+  // "what is my average spend" — the habitual rate rather than one window.
+  { intent: 'average_spend', weight: 7, patterns: [/\b(average|typical|on average|usually|normally|per month|a month)\b[^.]*\b(spend|spent|spending|cost|bill|outgoings?)\b/] },
+  { intent: 'average_spend', weight: 7, patterns: [/\b(spend|spending|cost)\b[^.]*\b(average|typically|usually|normally|per month|a month)\b/] },
+  { intent: 'average_spend', weight: 5, patterns: [/\bhow much do i (usually|typically|normally) (spend|spent)\b/] },
   { intent: 'income_summary', weight: 6, patterns: [/\b(how much (did|have) i (earn|earned|make|made)|income|earnings|salary|paycheck|payroll)\b/] },
   { intent: 'cashflow', weight: 6, patterns: [/\b(cash ?flow|money in and out|income vs|net (income|change)|inflow|outflow)\b/] },
   { intent: 'budget_status', weight: 6, patterns: [/\b(budget|over ?spend(ing)?|within budget|am i (over|under))\b/] },
@@ -30,6 +37,8 @@ export const INTENT_PATTERNS = [
   // ---- transaction exploration -----------------------------------------
   { intent: 'list_transactions', weight: 5, patterns: [/\b(show|list|see|view|display|what are)\b[^.]*\b(transactions?|activity|charges?|purchases?|payments?|history|statement|ledger)\b/] },
   { intent: 'list_transactions', weight: 4, patterns: [/\b(recent|latest|last) (transactions?|activity|charges?|purchases?)\b/, /\btransaction history\b/] },
+  // A bare plural ("charges under $50") is a listing request even without a verb.
+  { intent: 'list_transactions', weight: 3, patterns: [/\b(transactions?|charges?|purchases?|payments?|entries)\b/] },
   { intent: 'search_transactions', weight: 5, patterns: [/\b(search|find|look ?up|any|did i (buy|pay))\b/] },
   { intent: 'largest_expense', weight: 7, patterns: [/\b(biggest|largest|most expensive|highest) (purchase|expense|payment|charge|transaction)\b/] },
   { intent: 'recurring', weight: 7, patterns: [/\b(subscriptions?|recurring|repeat(ing)? (charge|payment)|monthly (charges?|bills?))\b/] },
@@ -39,6 +48,10 @@ export const INTENT_PATTERNS = [
   { intent: 'withdraw', weight: 6, patterns: [/\b(withdraw|take out|cash out|pull out|get cash|retrieve (money|cash|funds))\b/] },
   { intent: 'transfer', weight: 6, patterns: [/\b(transfer|move|shift|send|wire)\b/] },
   { intent: 'pay_card', weight: 7, patterns: [/\b(pay (off|down|the)? ?(my )?(credit )?card|card payment|pay the (card|balance))\b/] },
+
+  // ---- budgets ----------------------------------------------------------
+  { intent: 'set_budget', weight: 8, patterns: [/\b(set|change|update|raise|lower|increase|decrease|adjust)\b[^.]*\bbudget\b/] },
+  { intent: 'set_budget', weight: 7, patterns: [/\bbudget\b[^.]*\b(to|at|of)\s*\$?[\d,]/] },
 
   // ---- transactions metadata -------------------------------------------
   { intent: 'list_transactions', weight: 2, patterns: [/\btransactions?\b/] },
@@ -52,6 +65,25 @@ export const INTENT_PATTERNS = [
 export const DIRECTION_WORDS = {
   in: ['deposit', 'top up', 'add', 'put', 'pay in', 'load', 'credit', 'into', 'in to', 'receive', 'reimburse'],
   out: ['withdraw', 'take out', 'cash out', 'pull out', 'retrieve', 'spend', 'debit', 'out of', 'from'],
+};
+
+/**
+ * Comparison operators for amount filters ("transactions over $100",
+ * "charges under 50"). The op names match the numeric comparison applied when
+ * filtering, so "over $100" excludes exactly $100 while "at least" includes it.
+ */
+export const AMOUNT_OPERATORS = [
+  { words: ['over', 'above', 'more than', 'greater than', 'bigger than', 'larger than'], op: 'gt' },
+  { words: ['at least', 'no less than'], op: 'gte' },
+  { words: ['under', 'below', 'less than', 'smaller than', 'cheaper than'], op: 'lt' },
+  { words: ['at most', 'no more than', 'up to'], op: 'lte' },
+  { words: ['exactly', 'equal to'], op: 'eq' },
+];
+
+/** Words describing a transaction's settlement status. */
+export const STATUS_TERMS = {
+  pending: ['pending', 'uncleared', 'not cleared', 'processing', 'authorised', 'authorized', 'held'],
+  posted: ['posted', 'cleared', 'settled', 'completed', 'confirmed'],
 };
 
 export const PERIOD_WORDS = [

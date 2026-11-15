@@ -14,9 +14,11 @@ import { parseMoney, parseWordsNumber } from '../util/money.js';
 import { escapeHtml } from '../util/format.js';
 import {
   ACTION_VERBS,
+  AMOUNT_OPERATORS,
   CATEGORY_TERMS,
   INTENT_PATTERNS,
   MERCHANT_ALIASES,
+  STATUS_TERMS,
 } from './lexicon.js';
 import { defaultRange, extractRange, periodRange, PERIOD } from './dates.js';
 
@@ -233,6 +235,44 @@ export function detectCategory(text) {
   return best ? best.categoryId : null;
 }
 
+/** Detect a settlement status ("pending", "cleared"). */
+export function detectStatus(text) {
+  const q = ` ${text.toLowerCase()} `;
+  for (const [status, terms] of Object.entries(STATUS_TERMS)) {
+    if (terms.some((t) => q.includes(` ${t} `))) return status;
+  }
+  return null;
+}
+
+/**
+ * Detect a comparison against an amount, e.g. "over $100" -> { op:'gt', minor:10000 }.
+ * Returns null when no operator word precedes the amount.
+ */
+export function detectAmountFilter(text, { accountMentions = [], range = null } = {}) {
+  const lower = String(text).toLowerCase();
+  const masked = maskSpans(text, accountMentions);
+  const amount = detectAmount(masked, { range });
+  if (!amount) return null;
+
+  // Look at the words immediately preceding the amount phrase. Longest phrases
+  // are tested first so "at least" wins over a stray "least".
+  const raw = amount.raw.toLowerCase();
+  const idx = lower.lastIndexOf(raw);
+  const before = (idx >= 0 ? lower.slice(0, idx) : lower).trim();
+  const tail = before.split(/\s+/).slice(-3).join(' ');
+
+  const candidates = AMOUNT_OPERATORS
+    .flatMap((entry) => entry.words.map((word) => ({ word, op: entry.op })))
+    .sort((a, b) => b.word.length - a.word.length);
+
+  for (const { word, op } of candidates) {
+    if (new RegExp(`\\b${escapeRegExp(word)}$`).test(tail)) {
+      return { op, minor: amount.minor, raw: amount.raw, word };
+    }
+  }
+  return null;
+}
+
 /**
  * Words that can follow "at/from/to" without naming a merchant. Without this
  * guard phrases like "transactions from last week" look like a merchant.
@@ -311,6 +351,17 @@ export function parse(text, ctx = {}) {
   const category = detectCategory(raw);
   const merchant = detectMerchant(raw, { categories, accounts });
   const keywords = detectKeywords(raw, { nouns: analysis.nouns });
+  const status = detectStatus(raw);
+  const amountFilter = detectAmountFilter(raw, { accountMentions: mentions, range });
+
+  // A category or a time window with no explicit verb is still a spend question:
+  // "groceries last week", "spend on transport this month".
+  if (analysis.intent === 'unknown' && (category || range) && !amount) {
+    if (category && category !== 'income' && category !== 'transfer') {
+      analysis.intent = 'spend_summary';
+      analysis.inferred = true;
+    }
+  }
 
   const source = mentions.find((m) => m.role === 'source');
   const destination = mentions.find((m) => m.role === 'destination');
@@ -346,6 +397,8 @@ export function parse(text, ctx = {}) {
     merchant: merchant ? merchant.merchant : null,
     merchantExact: merchant ? merchant.exact : false,
     keywords,
+    status,
+    amountFilter,
     range,
     period: range ? range.period : null,
     defaultRange: defaultRange(now),

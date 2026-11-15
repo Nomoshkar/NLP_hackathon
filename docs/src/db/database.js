@@ -176,6 +176,15 @@ export async function persistAccounts(accounts) {
   return rows;
 }
 
+export async function persistCategory(category) {
+  const row = { ...category, sessionId };
+  await db.categories.put(row);
+  const idx = store.categories.findIndex((c) => c.id === category.id);
+  if (idx >= 0) store.categories[idx] = row;
+  else store.categories.push(row);
+  return row;
+}
+
 export async function persistTransactions(transactions) {
   if (!transactions.length) return [];
   const rows = transactions.map((t) => ({ ...t, sessionId }));

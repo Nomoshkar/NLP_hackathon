@@ -251,6 +251,59 @@ check('assistant asks for a missing amount, then accepts it', async () => {
   assert.match(follow.text, /deposited/i);
 });
 
+check('category questions with a time window are answered', async () => {
+  const bare = await assistant.handle('what did I spend on shopping', { now: NOW });
+  assert.match(bare.text, /shopping/i);
+  assert.doesNotMatch(bare.text, /not sure how to handle/i);
+
+  const windowed = await assistant.handle('groceries last week', { now: NOW });
+  assert.match(windowed.text, /groceries/i);
+  assert.match(windowed.text, /last week/i);
+  assert.doesNotMatch(windowed.text, /not sure/i);
+});
+
+check('amount filters narrow a transaction listing', async () => {
+  const over = await assistant.handle('show me transactions over $100', { now: NOW });
+  assert.match(over.text, /over \$100\.00/);
+  assert.match(over.text, /over \$100\.00 the last 12 months/);
+
+  // Every returned row must actually exceed the threshold.
+  const rows = over.blocks.find((b) => b.type === 'rows').items;
+  assert.ok(rows.length > 0, 'expected at least one row');
+  assert.ok(rows.every((r) => Math.abs(r.amountMinor) > 10000), 'rows must all exceed $100');
+
+  const under = await assistant.handle('charges under $50', { now: NOW });
+  assert.match(under.text, /under \$50\.00/);
+  const small = under.blocks.find((b) => b.type === 'rows').items;
+  assert.ok(small.every((r) => Math.abs(r.amountMinor) < 5000), 'rows must all be under $50');
+});
+
+check('average spend and status queries are understood', async () => {
+  const avg = await assistant.handle('what is my average spend', { now: NOW });
+  assert.match(avg.text, /averaged \$/i);
+  assert.match(avg.text, /a month/i);
+
+  const pending = await assistant.handle('do I have any pending transactions', { now: NOW });
+  assert.doesNotMatch(pending.text, /not sure how to handle/i);
+  assert.doesNotMatch(pending.text, /matches "pending"/i);
+});
+
+check('budget can be set through the assistant and persists', async () => {
+  const set = await assistant.handle('set my dining budget to 400', { now: NOW });
+  assert.match(set.text, /dining budget to \$400\.00/i);
+  assert.ok(set.affectsData);
+  assert.equal(db.store.categories.find((c) => c.id === 'dining').budgetMinor, 40000);
+
+  // Follow-up flow: no category given, then no amount.
+  const askCat = await assistant.handle('set my budget', { now: NOW });
+  assert.match(askCat.text, /which category/i);
+  const askAmt = await assistant.handle('dining', { now: NOW, pending: askCat.pending });
+  assert.match(askAmt.text, /what should the dining budget be/i);
+  const done = await assistant.handle('250', { now: NOW, pending: askAmt.pending });
+  assert.match(done.text, /dining budget to \$250\.00/i);
+  assert.equal(db.store.categories.find((c) => c.id === 'dining').budgetMinor, 25000);
+});
+
 /* ---- report ------------------------------------------------------------ */
 await queue;
 for (const r of results) {

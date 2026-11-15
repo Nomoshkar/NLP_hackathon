@@ -254,6 +254,8 @@ export function renderBudgets(state, now = Date.now()) {
         </div>
         <div class="budget__top">
           <span class="budget__nums">${escapeHtml(formatMoney(i.spent))} of <b>${escapeHtml(formatMoney(i.def.budgetMinor, { showCents: false }))}</b></span>
+          <button class="budget__edit" type="button" data-budget-edit="${i.def.id}"
+                  aria-label="Edit the ${escapeHtml(i.def.label)} budget">Edit</button>
         </div>
       </div>`)
     .join('');
@@ -293,6 +295,17 @@ export function renderLedger(state, now = Date.now()) {
   if (filters.accountId) rows = rows.filter((t) => t.accountId === filters.accountId);
   if (filters.categoryId) rows = rows.filter((t) => t.category === filters.categoryId);
   if (filters.direction === 'credit') rows = rows.filter((t) => t.direction === 'credit');
+  if (filters.status) rows = rows.filter((t) => (t.status || 'posted') === filters.status);
+  if (filters.amountOp && Number.isFinite(filters.amountMinor)) {
+    const { amountOp, amountMinor } = filters;
+    rows = rows.filter((t) => {
+      const v = t.amountMinor;
+      if (amountOp === 'gt') return v > amountMinor;
+      if (amountOp === 'lt') return v < amountMinor;
+      if (amountOp === 'eq') return v === amountMinor;
+      return true;
+    });
+  }
   if (filters.search) {
     const needle = filters.search.toLowerCase();
     rows = rows.filter((t) => `${t.merchant || ''} ${t.description || ''} ${t.category || ''}`.toLowerCase().includes(needle));
@@ -307,6 +320,11 @@ export function renderLedger(state, now = Date.now()) {
     const bits = [state.range?.label || 'All activity'];
     if (filters.accountId) bits.push(accountById(filters.accountId)?.name || '');
     if (filters.categoryId) bits.push(categoryById(filters.categoryId).label);
+    if (filters.status) bits.push(filters.status);
+    if (filters.amountOp && Number.isFinite(filters.amountMinor)) {
+      const word = { gt: 'over', lt: 'under', eq: 'exactly' }[filters.amountOp];
+      bits.push(`${word} ${formatMoney(filters.amountMinor)}`);
+    }
     if (filters.search) bits.push(`“${filters.search}”`);
     scope.textContent = bits.filter(Boolean).join(' · ');
   }
@@ -346,7 +364,8 @@ function transactionRow(tx) {
   ].filter(Boolean);
 
   return `
-    <article class="tx-row">
+    <article class="tx-row" data-tx="${escapeHtml(tx.id)}" role="row" tabindex="0"
+             aria-label="${escapeHtml(`${tx.merchant || tx.description}, ${formatMoney(credit ? tx.amountMinor : -tx.amountMinor, { signed: true })}, ${formatDate(tx.ts, { withYear: true })}`)}">
       <span class="tx-row__icon" style="--c:${category.color}" aria-hidden="true">${escapeHtml(category.icon || '•')}</span>
       <span class="tx-row__main">
         <span class="tx-row__merchant">${escapeHtml(tx.merchant || tx.description)}</span>
@@ -354,7 +373,7 @@ function transactionRow(tx) {
           ${tx.status === 'pending' ? '<span class="pill pill--pending">pending</span>' : ''}
         </span>
       </span>
-      <span class="tx-row__cat"><span class="pill">${escapeHtml(category.label)}</span></span>
+      <span class="tx-row__cat" role="cell"><span class="pill">${escapeHtml(category.label)}</span></span>
       <span class="tx-row__amount ${credit ? 'is-credit' : 'is-debit'}">${escapeHtml(formatMoney(credit ? tx.amountMinor : -tx.amountMinor, { signed: true }))}</span>
       <span class="tx-row__balance">${tx.balanceAfterMinor === null ? '—' : escapeHtml(formatMoney(tx.balanceAfterMinor))}</span>
     </article>`;
@@ -366,6 +385,9 @@ function transactionRow(tx) {
 export function populateFilters(state) {
   const accountSelect = q('tx-account');
   const categorySelect = q('tx-category');
+  const statusSelect = q('tx-status');
+  const opSelect = q('tx-op');
+  const amountInput = q('tx-amount');
   const search = q('tx-search');
 
   if (accountSelect) {
@@ -381,7 +403,17 @@ export function populateFilters(state) {
       .join('');
     categorySelect.value = state.filters.categoryId || '';
   }
-  if (search && search.value !== (state.filters.search || '')) {
+  if (statusSelect && statusSelect.value !== (state.filters.status || '')) {
+    statusSelect.value = state.filters.status || '';
+  }
+  if (opSelect && opSelect.value !== (state.filters.amountOp || '')) {
+    opSelect.value = state.filters.amountOp || '';
+  }
+  if (amountInput) {
+    const wanted = Number.isFinite(state.filters.amountMinor) ? String(state.filters.amountMinor / 100) : '';
+    if (amountInput.value !== wanted && document.activeElement !== amountInput) amountInput.value = wanted;
+  }
+  if (search && search.value !== (state.filters.search || '') && document.activeElement !== search) {
     search.value = state.filters.search || '';
   }
 }
