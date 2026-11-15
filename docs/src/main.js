@@ -184,11 +184,24 @@ const chat = createChat({
 
 let busy = false;
 
+/**
+ * The dock starts folded on a phone, so a user can type, tap a suggestion, or
+ * speak and then see nothing happen. Any turn unfolds it before the reply is
+ * rendered, otherwise the answer would be written into a `display:none` log.
+ */
+function revealDock() {
+  if (!document.body.classList.contains('dock-collapsed')) return;
+  document.body.classList.remove('dock-collapsed');
+  dom.dockToggle?.setAttribute('aria-expanded', 'true');
+  requestAnimationFrame(measureDock);
+}
+
 async function submit(text) {
   const message = String(text || '').trim();
   if (!message || busy) return;
   busy = true;
 
+  revealDock();
   chat.addUser(message);
   chat.showTyping();
   measureDock();
