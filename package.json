@@ -1,0 +1,16 @@
+{
+  "name": "meridian-local-ledger",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A private, browser-only account dashboard with a chat and voice assistant. No server, no AI API.",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 12000 --directory docs",
+    "check": "node tools/check-nlu.mjs",
+    "test:browser": "node tools/browser-test.mjs"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.0.0"
+  },
+  "license": "MIT"
+}

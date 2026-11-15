@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Meridian — Local Ledger</title>
+<meta name="description" content="A private, browser-only account dashboard with a chat and voice assistant. No server, no AI API: everything runs on your device." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314100c'/%3E%3Cpath d='M7 22V10l5 7 4-7 4 7 5-7v12' stroke='%23e8c37a' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/fonts.css" />
+<link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+<a class="skip-link" href="#ledger">Skip to transactions</a>
+
+<div class="grain" aria-hidden="true"></div>
+
+<header class="masthead">
+  <div class="masthead__brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M6 23V9l5 7 4-7 4 7 5-7v14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <p class="masthead__name">Meridian</p>
+      <p class="masthead__tag">Private ledger · runs entirely on this device</p>
+    </div>
+  </div>
+
+  <div class="masthead__tools">
+    <p class="session-chip" id="session-chip" title="Local session identifier">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="session-label">local session</span>
+    </p>
+    <button class="btn btn--ghost" id="btn-reset" type="button" title="Regenerate the demo ledger from scratch">
+      Reset session
+    </button>
+  </div>
+</header>
+
+<main class="shell">
+  <section class="hero" aria-labelledby="hero-heading">
+    <div class="hero__figure">
+      <p class="eyebrow" id="hero-heading">Total cash position</p>
+      <p class="balance" id="total-balance" aria-live="polite">
+        <span class="balance__sign">$</span><span class="balance__whole">0</span><span class="balance__cents">.00</span>
+      </p>
+      <p class="hero__delta" id="total-delta">—</p>
+    </div>
+    <dl class="hero__stats">
+      <div>
+        <dt>Net worth</dt>
+        <dd id="stat-networth">—</dd>
+      </div>
+      <div>
+        <dt>Spent this month</dt>
+        <dd id="stat-spent">—</dd>
+      </div>
+      <div>
+        <dt>Income this month</dt>
+        <dd id="stat-income">—</dd>
+      </div>
+      <div>
+        <dt>Runway</dt>
+        <dd id="stat-runway">—</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="accounts" id="accounts" aria-label="Accounts"></section>
+
+  <div class="grid">
+    <section class="panel panel--wide" aria-labelledby="h-trend">
+      <header class="panel__head">
+        <h2 id="h-trend">Balance trend</h2>
+        <div class="seg" role="group" aria-label="Trend window">
+          <button type="button" class="seg__btn is-active" data-trend="6">6M</button>
+          <button type="button" class="seg__btn" data-trend="12">12M</button>
+          <button type="button" class="seg__btn" data-trend="3">3M</button>
+        </div>
+      </header>
+      <div class="chart" id="trend-chart" role="img" aria-label="Balance over time"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-cats">
+      <header class="panel__head">
+        <h2 id="h-cats">Where it goes</h2>
+        <p class="panel__note" id="cats-note">This month</p>
+      </header>
+      <div class="catlist" id="category-list"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-flow">
+      <header class="panel__head">
+        <h2 id="h-flow">Monthly cash flow</h2>
+        <p class="panel__note">In vs out</p>
+      </header>
+      <div class="flow" id="flow-chart"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-budget">
+      <header class="panel__head">
+        <h2 id="h-budget">Budget watch</h2>
+        <p class="panel__note" id="budget-note">Month to date</p>
+      </header>
+      <div class="budgets" id="budget-list"></div>
+    </section>
+
+    <section class="panel panel--wide" id="ledger" aria-labelledby="h-ledger">
+      <header class="panel__head">
+        <h2 id="h-ledger">Ledger</h2>
+        <div class="filters">
+          <label class="field">
+            <span class="sr-only">Search transactions</span>
+            <input type="search" id="tx-search" placeholder="Search merchant or note…" autocomplete="off" />
+          </label>
+          <label class="field field--select">
+            <span class="sr-only">Filter by account</span>
+            <select id="tx-account"><option value="">All accounts</option></select>
+          </label>
+          <label class="field field--select">
+            <span class="sr-only">Filter by category</span>
+            <select id="tx-category"><option value="">All categories</option></select>
+          </label>
+          <div class="seg" role="group" aria-label="Sort">
+            <button type="button" class="seg__btn is-active" data-sort="new">Newest</button>
+            <button type="button" class="seg__btn" data-sort="large">Largest</button>
+          </div>
+        </div>
+      </header>
+      <p class="ledger__scope" id="ledger-scope">All activity</p>
+      <div class="ledger__table" id="ledger-table"></div>
+      <footer class="ledger__foot">
+        <p id="ledger-count">—</p>
+        <button class="btn btn--ghost" id="btn-more" type="button">Show more</button>
+      </footer>
+    </section>
+  </div>
+</main>
+
+<!-- Chat / voice dock -->
+<aside class="dock" id="dock" aria-label="Assistant">
+  <div class="dock__log" id="chat-log" aria-live="polite" aria-relevant="additions"></div>
+
+  <div class="dock__suggestions" id="chat-suggestions"></div>
+
+  <form class="dock__composer" id="chat-form" autocomplete="off">
+    <div class="dock__field">
+      <label class="sr-only" for="chat-input">Ask about your accounts or move money</label>
+      <textarea id="chat-input" rows="1" placeholder="Ask about balances, spending, or say “transfer $200 to savings”…"></textarea>
+      <p class="dock__status" id="voice-status" role="status" aria-live="polite"></p>
+    </div>
+    <button class="mic" id="btn-mic" type="button" title="Speak your request" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3.5a2.6 2.6 0 0 0-2.6 2.6v5.2a2.6 2.6 0 0 0 5.2 0V6.1A2.6 2.6 0 0 0 12 3.5Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M5.8 11.3v.6a6.2 6.2 0 0 0 12.4 0v-.6M12 18.1V21" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span class="sr-only">Start voice input</span>
+    </button>
+    <button class="btn btn--send" id="btn-send" type="submit">
+      <span class="sr-only">Send</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h13M12 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </form>
+
+  <p class="dock__fineprint">
+    Everything runs locally in your browser — no server, no AI API, no network calls. Balances and
+    transactions are synthetic demo data stored in IndexedDB for this session only.
+  </p>
+</aside>
+
+<button class="dock-toggle" id="btn-dock-toggle" type="button" aria-expanded="true" aria-controls="dock">
+  <span class="dock-toggle__label">Assistant</span>
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
