@@ -1,0 +1,19 @@
+{
+  "name": "Meridian — Private Local Ledger",
+  "short_name": "Meridian",
+  "description": "A private, browser-only account dashboard with a natural-language chat and voice assistant. No server and no AI API: all data stays on the device.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4ece0",
+  "theme_color": "#f4ece0",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%2314100c'/%3E%3Cpath d='M112 352V160l80 112 64-112 64 112 80-112v192' stroke='%23e8c37a' stroke-width='34' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
