@@ -48,8 +48,9 @@ as-is.
 
 ## Environment limitation
 
-In the OpenHands sandbox, `GITHUB_TOKEN` (and the git credential helper) is a
-GitHub App **installation token with read-only access** to this repo: API `GET`
-works, but `git push`, `POST /pulls` and the Pages API all return `403
-Resource not accessible by integration`. Push and PR creation must be done by
-the user or with a token that has `contents: write`.
+The OpenHands `GITHUB_TOKEN` is a GitHub App **installation token**. It carries
+`contents: write`, so `git push` and `POST /pulls` work. It does **not** carry
+the Pages administration permission, so `POST /repos/{owner}/{repo}/pages`
+returns `403 Resource not accessible by integration`, as does
+`actions/configure-pages` with `enablement: true`. Enable or reconfigure the
+Pages site from the repository settings UI instead.

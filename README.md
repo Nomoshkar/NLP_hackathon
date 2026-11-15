@@ -9,8 +9,7 @@ There is no backend, no database server, no account, and **no AI API key**. The
 language understanding is a rule-based parser that ships with the page, and the
 data is seeded into IndexedDB on first load.
 
-**Deploy target:** https://nomoshkar.github.io/NLP_hackathon/ — see
-[Deploying](#deploying) below to publish it.
+**Live demo:** https://nomoshkar.github.io/NLP_hackathon/
 
 > The demo data is synthetic. Every session starts from the same seeded ledger
 > and changes you make stay in your browser only.
@@ -79,16 +78,18 @@ testable.
 
 ## Deploying
 
-GitHub Pages serves the `docs/` folder directly; there is nothing to build.
+The site is published at **https://nomoshkar.github.io/NLP_hackathon/**.
 
-1. Merge this branch into `main`.
-2. In the repository, open **Settings → Pages**.
-3. Under **Build and deployment**, set **Source** to *Deploy from a branch*, then
-   choose branch `main` and folder `/docs`. Save.
+GitHub Pages serves this repository from the **`gh-pages`** branch, which holds a
+copy of `docs/` at its root. `docs/` remains the source of truth; the branch is
+the published artifact.
 
-The site appears at `https://<owner>.github.io/NLP_hackathon/` after a minute or
-two. The committed `docs/.nojekyll` file stops Jekyll from processing the folder,
-and every asset path is relative, so it works from that subpath unchanged.
+The `.github/workflows/pages.yml` workflow refreshes `gh-pages` whenever `docs/`
+changes on `main`, so the live site tracks the source. To publish an urgent
+change by hand, push the contents of `docs/` to `gh-pages` at its root.
+
+`docs/.nojekyll` is committed, so files are served as-is, and every asset path is
+relative, which is why the app works from the `/NLP_hackathon/` subpath.
 
 ## Running it locally
 
