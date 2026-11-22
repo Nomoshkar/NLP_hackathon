@@ -8,6 +8,11 @@
 <meta name="theme-color" content="#f4ece0" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#141210" media="(prefers-color-scheme: dark)" />
 <meta name="color-scheme" content="light dark" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Meridian" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="format-detection" content="telephone=no" />
 <link rel="canonical" href="https://nomoshkar.github.io/NLP_hackathon/" />
 
 <!-- Open Graph / Twitter: the page is meant to be shared as a link. -->
@@ -99,6 +104,7 @@
   </section>
 
   <section class="accounts" id="accounts" aria-label="Accounts"></section>
+  <div class="accounts__dots" id="accounts-dots" aria-hidden="true"></div>
 
   <div class="grid">
     <section class="panel panel--wide" aria-labelledby="h-trend">
@@ -127,6 +133,7 @@
         <p class="panel__note">In vs out</p>
       </header>
       <div class="flow" id="flow-chart"></div>
+      <div class="flow__detail" id="flow-detail" aria-live="polite"></div>
     </section>
 
     <section class="panel" aria-labelledby="h-budget">
@@ -139,8 +146,18 @@
 
     <section class="panel panel--wide" id="ledger" aria-labelledby="h-ledger">
       <header class="panel__head">
-        <h2 id="h-ledger">Ledger</h2>
-        <div class="filters">
+        <div class="ledger__title-wrap">
+          <h2 id="h-ledger">Ledger</h2>
+          <button class="btn btn--ghost filter-toggle" id="btn-filters-toggle" type="button" aria-expanded="false" aria-controls="filters-group" title="Toggle filter bar">
+            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Filters</span>
+            <span class="filter-badge" id="filter-badge" hidden>0</span>
+          </button>
+          <button class="btn btn--ghost btn--clear-filters" id="btn-clear-filters" type="button" hidden title="Reset all active filters">
+            Clear
+          </button>
+        </div>
+        <div class="filters" id="filters-group">
           <label class="field">
             <span class="sr-only">Search transactions</span>
             <input type="search" id="tx-search" placeholder="Search merchant or note…" autocomplete="off" />
@@ -192,6 +209,29 @@
 
 <!-- Chat / voice dock -->
 <aside class="dock" id="dock" aria-label="Assistant">
+  <div class="dock__handle-bar" id="dock-handle-bar" aria-hidden="true" title="Drag or tap to adjust sheet">
+    <span class="dock__drag-handle"></span>
+  </div>
+
+  <!-- Collapsed quick bar for mobile touch interface -->
+  <div class="dock__collapsed-bar" id="dock-collapsed-bar">
+    <div class="dock-collapsed__brand">
+      <svg class="dock-collapsed__mark" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M6 23V9l5 7 4-7 4 7 5-7v14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="dock-collapsed__label">Assistant</span>
+    </div>
+    <button type="button" class="dock-collapsed__trigger" id="dock-quick-expand" aria-label="Open assistant and type query">
+      <span>Ask about accounts, transfers, or spending…</span>
+    </button>
+    <button class="dock-collapsed__mic" id="btn-collapsed-mic" type="button" title="Speak your request" aria-label="Voice input">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3.5a2.6 2.6 0 0 0-2.6 2.6v5.2a2.6 2.6 0 0 0 5.2 0V6.1A2.6 2.6 0 0 0 12 3.5Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M5.8 11.3v.6a6.2 6.2 0 0 0 12.4 0v-.6M12 18.1V21" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
   <div class="dock__log" id="chat-log" aria-live="polite" aria-relevant="additions"></div>
 
   <div class="dock__suggestions" id="chat-suggestions"></div>
@@ -232,12 +272,13 @@
 <div class="drawer" id="drawer" hidden>
   <div class="drawer__scrim" id="drawer-scrim" aria-hidden="true"></div>
   <aside class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title" tabindex="-1">
+    <div class="drawer__handle" aria-hidden="true" title="Swipe down or right to dismiss"></div>
     <header class="drawer__head">
       <div>
         <p class="eyebrow" id="drawer-kicker">Transaction</p>
         <h2 class="drawer__title" id="drawer-title">—</h2>
       </div>
-      <button class="btn btn--ghost" id="drawer-close" type="button" aria-label="Close transaction details">✕</button>
+      <button class="drawer__close" id="drawer-close" type="button" aria-label="Close transaction details">✕</button>
     </header>
     <p class="drawer__amount" id="drawer-amount">—</p>
     <dl class="drawer__facts" id="drawer-facts"></dl>

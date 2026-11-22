@@ -15,6 +15,7 @@ import { createChat } from './ui/chat.js';
 import { createVoiceInput, isVoiceSupported } from './ui/voice.js';
 import { escapeHtml, formatDate, formatTime } from './util/format.js';
 import { formatMoney } from './util/money.js';
+import { haptic } from './util/haptics.js';
 
 const DEFAULT_SUGGESTIONS = [
   'What are my balances?',
@@ -39,6 +40,10 @@ const dom = {
   log: document.getElementById('chat-log'),
   suggestions: document.getElementById('chat-suggestions'),
   mic: document.getElementById('btn-mic'),
+  btnCollapsedMic: document.getElementById('btn-collapsed-mic'),
+  dockCollapsedBar: document.getElementById('dock-collapsed-bar'),
+  dockQuickExpand: document.getElementById('dock-quick-expand'),
+  dockHandleBar: document.getElementById('dock-handle-bar'),
   voiceStatus: document.getElementById('voice-status'),
   toast: document.getElementById('toast'),
   dock: document.getElementById('dock'),
@@ -52,11 +57,16 @@ const dom = {
   statusSelect: document.getElementById('tx-status'),
   opSelect: document.getElementById('tx-op'),
   amountInput: document.getElementById('tx-amount'),
+  btnFiltersToggle: document.getElementById('btn-filters-toggle'),
+  filtersGroup: document.getElementById('filters-group'),
+  btnClearFilters: document.getElementById('btn-clear-filters'),
+  filterBadge: document.getElementById('filter-badge'),
   themeToggle: document.getElementById('btn-theme'),
   themeLabel: document.getElementById('theme-label'),
   drawer: document.getElementById('drawer'),
   drawerScrim: document.getElementById('drawer-scrim'),
   drawerPanel: document.querySelector('.drawer__panel'),
+  drawerHandle: document.querySelector('.drawer__handle'),
   drawerTitle: document.getElementById('drawer-title'),
   drawerAmount: document.getElementById('drawer-amount'),
   drawerFacts: document.getElementById('drawer-facts'),
@@ -94,6 +104,7 @@ function setupTheme() {
   else applyTheme(currentTheme());
 
   dom.themeToggle?.addEventListener('click', () => {
+    haptic.tap();
     const next = currentTheme() === 'dark' ? 'light' : 'dark';
     applyTheme(next);
     try { localStorage.setItem(THEME_KEY, next); } catch { /* ignore */ }
@@ -122,11 +133,22 @@ function renderAll() {
   renderHero(now);
   renderAccounts(state, selectAccount);
   renderTrend(state.trendMonths, now);
-  renderCategories(state, now);
+  renderCategories(state, now, selectCategory);
   renderFlow(state, now);
   renderBudgets(state, now);
   populateFilters(state);
   renderLedger(state, now);
+}
+
+function selectCategory(categoryId) {
+  haptic.tap();
+  state.filters = {
+    ...state.filters,
+    categoryId: state.filters.categoryId === categoryId ? '' : categoryId,
+  };
+  state.limit = 25;
+  renderAll();
+  document.getElementById('ledger')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function applyView(view) {
@@ -166,6 +188,7 @@ function applyView(view) {
 }
 
 function selectAccount(accountId) {
+  haptic.selection();
   state.accountId = state.accountId === accountId ? null : accountId;
   state.filters = { ...state.filters, accountId: state.accountId || '' };
   state.range = null;
@@ -179,20 +202,25 @@ function selectAccount(accountId) {
 const chat = createChat({
   logEl: dom.log,
   suggestionsEl: dom.suggestions,
-  onSuggestion: (text) => submit(text),
+  onSuggestion: (text) => {
+    haptic.tap();
+    submit(text);
+  },
 });
 
 let busy = false;
 
-/**
- * The dock starts folded on a phone, so a user can type, tap a suggestion, or
- * speak and then see nothing happen. Any turn unfolds it before the reply is
- * rendered, otherwise the answer would be written into a `display:none` log.
- */
 function revealDock() {
   if (!document.body.classList.contains('dock-collapsed')) return;
   document.body.classList.remove('dock-collapsed');
   dom.dockToggle?.setAttribute('aria-expanded', 'true');
+  requestAnimationFrame(measureDock);
+}
+
+function collapseDock() {
+  if (document.body.classList.contains('dock-collapsed')) return;
+  document.body.classList.add('dock-collapsed');
+  dom.dockToggle?.setAttribute('aria-expanded', 'false');
   requestAnimationFrame(measureDock);
 }
 
@@ -216,12 +244,17 @@ async function submit(text) {
     if (reply.affectsData) {
       resetUndoStackOnReset(reply);
       renderAll();
+      haptic.success();
       if (reply.receipt) toast(`Posted ${reply.receipt.kind.replace('_', ' ')}`, {});
     }
-    if (reply.tone === 'warning') toast(reply.text, { warning: true });
+    if (reply.tone === 'warning') {
+      haptic.warning();
+      toast(reply.text, { warning: true });
+    }
     if (reply.view) applyView(reply.view);
   } catch (err) {
     console.error(err);
+    haptic.warning();
     chat.removeTyping();
     chat.addAssistant({
       role: 'assistant',
@@ -246,8 +279,13 @@ function resetUndoStackOnReset(reply) {
    -------------------------------------------------------------------------- */
 function setupVoice() {
   if (!isVoiceSupported()) {
-    dom.mic.disabled = true;
-    dom.mic.title = 'Voice input is not supported in this browser — use Chrome, Edge or Safari';
+    const handleUnsupported = () => {
+      haptic.warning();
+      toast('Voice input is not supported in this browser — use Chrome, Edge or Safari', { warning: true });
+    };
+    dom.mic.title = 'Voice input is not supported in this browser';
+    dom.mic.addEventListener('click', handleUnsupported);
+    dom.btnCollapsedMic?.addEventListener('click', handleUnsupported);
     dom.voiceStatus.textContent = '';
     return;
   }
@@ -267,16 +305,31 @@ function setupVoice() {
       const listening = voiceState === 'listening';
       dom.mic.classList.toggle('is-listening', listening);
       dom.mic.setAttribute('aria-pressed', String(listening));
+      dom.btnCollapsedMic?.classList.toggle('is-listening', listening);
+      dom.btnCollapsedMic?.setAttribute('aria-pressed', String(listening));
       setVoiceStatus(listening ? 'Listening… speak now' : '');
+      if (listening) {
+        haptic.toggle();
+        revealDock();
+      }
     },
     onError: (message) => {
+      haptic.warning();
       setVoiceStatus(message, true);
       dom.mic.classList.remove('is-listening');
       dom.mic.setAttribute('aria-pressed', 'false');
+      dom.btnCollapsedMic?.classList.remove('is-listening');
+      dom.btnCollapsedMic?.setAttribute('aria-pressed', 'false');
     },
   });
 
-  dom.mic.addEventListener('click', () => voice.toggle());
+  const toggleVoice = () => {
+    haptic.tap();
+    voice.toggle();
+  };
+
+  dom.mic.addEventListener('click', toggleVoice);
+  dom.btnCollapsedMic?.addEventListener('click', toggleVoice);
   dom.mic.title = 'Speak your request';
 }
 
@@ -287,12 +340,13 @@ function setVoiceStatus(message, isError = false) {
 }
 
 /* --------------------------------------------------------------------------
-   Composer
+   Composer & Virtual Viewport
    -------------------------------------------------------------------------- */
 function autoGrow() {
   const input = dom.input;
   input.style.height = 'auto';
-  input.style.height = `${Math.min(input.scrollHeight, 132)}px`;
+  const maxHeight = window.innerWidth <= 640 ? 96 : 132;
+  input.style.height = `${Math.min(input.scrollHeight, maxHeight)}px`;
 }
 
 function setupComposer() {
@@ -315,16 +369,51 @@ function setupComposer() {
       autoGrow();
     }
   });
+
+  // Handle virtual keyboard on mobile
+  if (window.visualViewport) {
+    const onViewportChange = () => {
+      const diff = window.innerHeight - window.visualViewport.height;
+      if (diff > 120) {
+        dom.dock.style.transform = `translateY(-${diff}px)`;
+        dom.dock.classList.add('is-keyboard');
+        document.body.classList.remove('dock-collapsed');
+      } else {
+        dom.dock.style.transform = '';
+        dom.dock.classList.remove('is-keyboard');
+      }
+      measureDock();
+    };
+    window.visualViewport.addEventListener('resize', onViewportChange);
+    window.visualViewport.addEventListener('scroll', onViewportChange);
+  }
 }
 
 /* --------------------------------------------------------------------------
    Ledger controls
    -------------------------------------------------------------------------- */
 function setupLedgerControls() {
+  dom.btnFiltersToggle?.addEventListener('click', () => {
+    haptic.tap();
+    const isOpen = dom.filtersGroup?.classList.toggle('is-open');
+    dom.btnFiltersToggle.setAttribute('aria-expanded', String(isOpen));
+  });
+
+  dom.btnClearFilters?.addEventListener('click', () => {
+    haptic.tap();
+    state.filters = { accountId: '', categoryId: '', status: '', amountOp: '', amountMinor: null, search: '', sort: 'new', direction: '' };
+    state.accountId = null;
+    state.range = null;
+    state.limit = 25;
+    renderAll();
+    toast('Filters cleared');
+  });
+
   dom.search?.addEventListener('input', () => {
     state.filters = { ...state.filters, search: dom.search.value };
     state.limit = 25;
     renderLedger(state);
+    populateFilters(state);
   });
 
   dom.accountSelect?.addEventListener('change', () => {
@@ -338,12 +427,14 @@ function setupLedgerControls() {
     state.filters = { ...state.filters, categoryId: dom.categorySelect.value };
     state.limit = 25;
     renderLedger(state);
+    populateFilters(state);
   });
 
   dom.statusSelect?.addEventListener('change', () => {
     state.filters = { ...state.filters, status: dom.statusSelect.value };
     state.limit = 25;
     renderLedger(state);
+    populateFilters(state);
   });
 
   const applyAmount = () => {
@@ -356,60 +447,85 @@ function setupLedgerControls() {
     };
     state.limit = 25;
     renderLedger(state);
+    populateFilters(state);
   };
   dom.opSelect?.addEventListener('change', applyAmount);
   dom.amountInput?.addEventListener('input', applyAmount);
 
-  dom.export?.addEventListener('click', exportCsv);
+  dom.export?.addEventListener('click', () => {
+    haptic.tap();
+    exportCsv();
+  });
 
   // Rows open the detail drawer, by click or by keyboard.
   document.getElementById('ledger-table')?.addEventListener('click', (event) => {
     const row = event.target.closest('[data-tx]');
-    if (row) openDrawer(store.transactions.find((t) => t.id === row.dataset.tx));
+    if (row) {
+      haptic.tap();
+      openDrawer(store.transactions.find((t) => t.id === row.dataset.tx));
+    }
   });
   document.getElementById('ledger-table')?.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     const row = event.target.closest('[data-tx]');
     if (!row) return;
     event.preventDefault();
+    haptic.tap();
     openDrawer(store.transactions.find((t) => t.id === row.dataset.tx));
   });
 
-  // Inline budget editing in the Budget watch panel.
+  // Inline budget editing with mobile-friendly form and Save/Cancel buttons
   document.getElementById('budget-list')?.addEventListener('click', (event) => {
     const btn = event.target.closest('[data-budget-edit]');
     if (!btn) return;
+    haptic.tap();
     const id = btn.dataset.budgetEdit;
     const def = store.categories.find((c) => c.id === id);
     if (!def) return;
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.className = 'budget__input';
-    input.min = '0';
-    input.step = '1';
-    input.value = String(Math.round((def.budgetMinor || 0) / 100));
-    input.setAttribute('aria-label', `${def.label} budget amount`);
-    btn.replaceWith(input);
+
+    const form = document.createElement('form');
+    form.className = 'budget__edit-form';
+    form.innerHTML = `
+      <input type="number" class="budget__input" inputmode="numeric" pattern="[0-9]*" min="0" step="1"
+             value="${String(Math.round((def.budgetMinor || 0) / 100))}"
+             aria-label="${escapeHtml(def.label)} budget amount" />
+      <button type="submit" class="budget__btn budget__btn--save" aria-label="Save ${escapeHtml(def.label)} budget">✓</button>
+      <button type="button" class="budget__btn budget__btn--cancel" aria-label="Cancel editing">✕</button>
+    `;
+
+    btn.replaceWith(form);
+    const input = form.querySelector('input');
     input.focus();
     input.select();
 
-    const commit = async () => {
+    const finish = () => {
+      renderBudgets(state);
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
       const value = Number(input.value);
       if (Number.isFinite(value) && value >= 0) {
+        haptic.success();
         await persistCategory({ ...def, budgetMinor: Math.round(value * 100) });
         toast(`${def.label} budget set to ${formatMoney(Math.round(value * 100))}`);
       }
-      renderBudgets(state);
-    };
-    input.addEventListener('blur', commit, { once: true });
+      finish();
+    });
+
+    form.querySelector('.budget__btn--cancel')?.addEventListener('click', () => {
+      haptic.tap();
+      finish();
+    });
+
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-      if (e.key === 'Escape') { input.value = String(Math.round((def.budgetMinor || 0) / 100)); input.blur(); }
+      if (e.key === 'Escape') finish();
     });
   });
 
   document.querySelectorAll('[data-sort]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      haptic.tap();
       document.querySelectorAll('[data-sort]').forEach((b) => b.classList.toggle('is-active', b === btn));
       state.filters = { ...state.filters, sort: btn.dataset.sort };
       renderLedger(state);
@@ -418,6 +534,7 @@ function setupLedgerControls() {
 
   document.querySelectorAll('[data-trend]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      haptic.tap();
       document.querySelectorAll('[data-trend]').forEach((b) => b.classList.toggle('is-active', b === btn));
       state.trendMonths = Number(btn.dataset.trend);
       renderTrend(state.trendMonths);
@@ -425,6 +542,7 @@ function setupLedgerControls() {
   });
 
   dom.more?.addEventListener('click', () => {
+    haptic.tap();
     state.limit += 25;
     renderLedger(state);
   });
@@ -438,6 +556,7 @@ let closeModal = null;
 function confirmDialog({ title = 'Are you sure?', body = '', confirmLabel = 'Confirm' } = {}) {
   return new Promise((resolve) => {
     if (!dom.modal) { resolve(window.confirm(body || title)); return; }
+    haptic.warning();
     dom.modalTitle.textContent = title;
     dom.modalBody.textContent = body;
     dom.modalConfirm.textContent = confirmLabel;
@@ -445,6 +564,7 @@ function confirmDialog({ title = 'Are you sure?', body = '', confirmLabel = 'Con
     requestAnimationFrame(() => dom.modal.classList.add('is-open'));
 
     const finish = (value) => {
+      haptic.tap();
       dom.modal.classList.remove('is-open');
       setTimeout(() => { dom.modal.hidden = true; }, 200);
       dom.modalConfirm.removeEventListener('click', onYes);
@@ -468,8 +588,83 @@ function confirmDialog({ title = 'Are you sure?', body = '', confirmLabel = 'Con
 }
 
 /* --------------------------------------------------------------------------
-   Transaction detail drawer
+   Transaction detail drawer & Gestures
    -------------------------------------------------------------------------- */
+let activeCloseDrawer = null;
+
+function closeDrawer() {
+  if (activeCloseDrawer) {
+    activeCloseDrawer();
+    activeCloseDrawer = null;
+  }
+}
+
+function setupDrawerGestures() {
+  if (!dom.drawerPanel) return;
+  let startX = 0;
+  let startY = 0;
+  let currentX = 0;
+  let currentY = 0;
+  let isTracking = false;
+
+  dom.drawerPanel.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    currentX = startX;
+    currentY = startY;
+    isTracking = true;
+    dom.drawerPanel.style.transition = 'none';
+  }, { passive: true });
+
+  dom.drawerPanel.addEventListener('touchmove', (e) => {
+    if (!isTracking || e.touches.length !== 1) return;
+    currentX = e.touches[0].clientX;
+    currentY = e.touches[0].clientY;
+    const deltaX = currentX - startX;
+    const deltaY = currentY - startY;
+
+    const isMobile = window.innerWidth <= 640;
+    if (isMobile) {
+      if (deltaY > 0 && dom.drawerPanel.scrollTop <= 0) {
+        dom.drawerPanel.style.transform = `translateY(${deltaY}px)`;
+      }
+    } else {
+      if (deltaX > 0) {
+        dom.drawerPanel.style.transform = `translateX(${deltaX}px)`;
+      }
+    }
+  }, { passive: true });
+
+  const onEnd = () => {
+    if (!isTracking) return;
+    isTracking = false;
+    dom.drawerPanel.style.transition = '';
+    const deltaX = currentX - startX;
+    const deltaY = currentY - startY;
+    const isMobile = window.innerWidth <= 640;
+
+    if (isMobile) {
+      if (deltaY > 80 && dom.drawerPanel.scrollTop <= 0) {
+        haptic.tap();
+        closeDrawer();
+      } else {
+        dom.drawerPanel.style.transform = '';
+      }
+    } else {
+      if (deltaX > 80) {
+        haptic.tap();
+        closeDrawer();
+      } else {
+        dom.drawerPanel.style.transform = '';
+      }
+    }
+  };
+
+  dom.drawerPanel.addEventListener('touchend', onEnd, { passive: true });
+  dom.drawerPanel.addEventListener('touchcancel', onEnd, { passive: true });
+}
+
 function openDrawer(tx) {
   if (!dom.drawer || !tx) return;
   const account = accountById(tx.accountId);
@@ -496,14 +691,17 @@ function openDrawer(tx) {
     .join('');
 
   const lastFocused = document.activeElement;
+  dom.drawerPanel.style.transform = '';
   dom.drawer.hidden = false;
   requestAnimationFrame(() => dom.drawer.classList.add('is-open'));
   dom.drawerPanel?.focus();
 
   dom.drawerCopy.onclick = async () => {
+    haptic.tap();
     const text = facts.map(([k, v]) => `${k}: ${v}`).join('\n');
     try {
       await navigator.clipboard.writeText(text);
+      haptic.success();
       toast('Transaction details copied');
     } catch {
       toast('Could not copy to the clipboard', { warning: true });
@@ -512,16 +710,19 @@ function openDrawer(tx) {
 
   const close = () => {
     dom.drawer.classList.remove('is-open');
+    dom.drawerPanel.style.transform = '';
     setTimeout(() => { dom.drawer.hidden = true; }, 320);
     document.removeEventListener('keydown', onKey);
     dom.drawerScrim.removeEventListener('click', close);
     dom.drawerClose.removeEventListener('click', close);
+    activeCloseDrawer = null;
     if (lastFocused instanceof HTMLElement) lastFocused.focus();
   };
   const onKey = (event) => { if (event.key === 'Escape') close(); };
   dom.drawerScrim.addEventListener('click', close);
   dom.drawerClose.addEventListener('click', close);
   document.addEventListener('keydown', onKey);
+  activeCloseDrawer = close;
 }
 
 /* --------------------------------------------------------------------------
@@ -578,12 +779,60 @@ function exportCsv() {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+  haptic.success();
   toast(`Exported ${rows.length} transactions`);
 }
 
 /* --------------------------------------------------------------------------
-   Session controls
+   Session & Dock controls
    -------------------------------------------------------------------------- */
+function setupDockGestures() {
+  const handleBar = dom.dockHandleBar;
+  if (!handleBar) return;
+  let startY = 0;
+  let currentY = 0;
+  let isTracking = false;
+
+  handleBar.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    startY = e.touches[0].clientY;
+    currentY = startY;
+    isTracking = true;
+  }, { passive: true });
+
+  handleBar.addEventListener('touchmove', (e) => {
+    if (!isTracking || e.touches.length !== 1) return;
+    currentY = e.touches[0].clientY;
+  }, { passive: true });
+
+  const onEnd = () => {
+    if (!isTracking) return;
+    isTracking = false;
+    const deltaY = currentY - startY;
+    if (deltaY > 40) {
+      haptic.toggle();
+      collapseDock();
+    } else if (deltaY < -40) {
+      haptic.toggle();
+      revealDock();
+    }
+  };
+
+  handleBar.addEventListener('touchend', onEnd, { passive: true });
+  handleBar.addEventListener('touchcancel', onEnd, { passive: true });
+  handleBar.addEventListener('click', () => {
+    haptic.toggle();
+    if (document.body.classList.contains('dock-collapsed')) revealDock();
+    else collapseDock();
+  });
+
+  dom.dockQuickExpand?.addEventListener('click', () => {
+    haptic.tap();
+    revealDock();
+    dom.input.focus();
+  });
+}
+
 function setupSessionControls() {
   dom.reset?.addEventListener('click', async () => {
     const confirmed = await confirmDialog({
@@ -611,11 +860,12 @@ function setupSessionControls() {
   });
 
   dom.dockToggle?.addEventListener('click', () => {
+    haptic.toggle();
     const collapsed = document.body.classList.toggle('dock-collapsed');
     dom.dockToggle.setAttribute('aria-expanded', String(!collapsed));
-    // Let the layout settle before re-measuring.
     requestAnimationFrame(() => {
-      const height = collapsed ? 58 : Math.ceil(dom.dock.getBoundingClientRect().height);
+      const isMobile = window.innerWidth <= 560;
+      const height = collapsed ? (isMobile ? 70 : 58) : Math.ceil(dom.dock.getBoundingClientRect().height);
       document.documentElement.style.setProperty('--dock-h', `${height}px`);
     });
   });
@@ -624,17 +874,14 @@ function setupSessionControls() {
 /* --------------------------------------------------------------------------
    Dock geometry
    -------------------------------------------------------------------------- */
-/**
- * The dock is fixed, and its height changes as the transcript grows, so the
- * page reserves space from the measured height rather than a fixed guess.
- */
 let measureDock = () => {};
 
 function watchDockHeight() {
   if (!dom.dock) return;
   const apply = () => {
     const collapsed = document.body.classList.contains('dock-collapsed');
-    const height = collapsed ? 58 : Math.ceil(dom.dock.getBoundingClientRect().height);
+    const isMobile = window.innerWidth <= 560;
+    const height = collapsed ? (isMobile ? 70 : 58) : Math.ceil(dom.dock.getBoundingClientRect().height);
     document.documentElement.style.setProperty('--dock-h', `${height}px`);
   };
   if (typeof ResizeObserver === 'function') {
@@ -654,8 +901,14 @@ async function boot() {
   setupTheme();
   await init();
 
-  // On a phone the dock would cover half the screen, so it starts folded to a
-  // labelled pill; the dashboard is the primary view there.
+  // Register offline PWA Service Worker
+  if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    navigator.serviceWorker.register('./sw.js').catch((err) => {
+      console.warn('Service worker registration failed:', err);
+    });
+  }
+
+  // On a phone the dock starts folded to a labelled pill; the dashboard is primary.
   if (window.matchMedia?.('(max-width: 560px)').matches) {
     document.body.classList.add('dock-collapsed');
     dom.dockToggle?.setAttribute('aria-expanded', 'false');
@@ -667,9 +920,11 @@ async function boot() {
   setupLedgerControls();
   setupSessionControls();
   setupVoice();
+  setupDrawerGestures();
+  setupDockGestures();
   const syncDock = watchDockHeight();
 
-  // Re-render whenever the data layer changes (actions, reset, another tab).
+  // Re-render whenever the data layer changes.
   subscribe((event) => {
     if (event.type === 'change') renderAll();
   });
@@ -683,6 +938,21 @@ async function boot() {
   dom.input.focus();
   document.body.dataset.ready = 'true';
 }
+
+boot().catch((err) => {
+  console.error('Failed to start Meridian', err);
+  const message = err?.name === 'InvalidStateError' || /indexeddb|idb/i.test(String(err?.message))
+    ? 'This browser blocked local storage (IndexedDB). Meridian keeps your ledger on-device, so it cannot run without it. Try a normal (non-private) window.'
+    : 'Meridian failed to start. See the browser console for details.';
+  document.body.insertAdjacentHTML(
+    'afterbegin',
+    `<div class="toast is-visible is-warning" style="position:static;transform:none;margin:1rem auto;max-width:640px">${message}</div>`,
+  );
+});
+
+export { state, submit, renderAll };
+
+globalThis.__testSubmit = submit;
 
 boot().catch((err) => {
   console.error('Failed to start Meridian', err);

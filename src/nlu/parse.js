@@ -223,11 +223,11 @@ export function detectAmount(text, { accountMentions = [], range = null } = {}) 
 
 /** Map category keywords to a category id. */
 export function detectCategory(text) {
-  const q = ` ${text.toLowerCase()} `;
+  const q = ` ${text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ')} `;
   let best = null;
   for (const [categoryId, terms] of Object.entries(CATEGORY_TERMS)) {
     for (const term of terms) {
-      if (q.includes(` ${term} `) || q.includes(`${term}s `)) {
+      if (q.includes(` ${term} `) || q.includes(` ${term}s `)) {
         if (!best || term.length > best.term.length) best = { categoryId, term };
       }
     }
@@ -237,7 +237,7 @@ export function detectCategory(text) {
 
 /** Detect a settlement status ("pending", "cleared"). */
 export function detectStatus(text) {
-  const q = ` ${text.toLowerCase()} `;
+  const q = ` ${text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ')} `;
   for (const [status, terms] of Object.entries(STATUS_TERMS)) {
     if (terms.some((t) => q.includes(` ${t} `))) return status;
   }

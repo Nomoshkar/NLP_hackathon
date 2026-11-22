@@ -63,7 +63,7 @@ export function balanceTrend(series, { width = 860, height = 260 } = {}) {
     .join('');
 
   const dots = points
-    .map(([px, py], i) => `<circle class="chart__dot" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3.4" style="animation-delay:${(0.55 + i * 0.06).toFixed(2)}s"><title>${escapeHtml(`${formatMonth(series[i].ts)}: ${formatMoney(series[i].balanceMinor)}`)}</title></circle>`)
+    .map(([px, py], i) => `<circle class="chart__dot" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3.6" data-index="${i}" data-x="${px.toFixed(1)}" data-y="${py.toFixed(1)}" data-month="${escapeHtml(formatMonth(series[i].ts))}" data-amount="${escapeHtml(formatMoney(series[i].balanceMinor))}" style="animation-delay:${(0.55 + i * 0.06).toFixed(2)}s"><title>${escapeHtml(`${formatMonth(series[i].ts)}: ${formatMoney(series[i].balanceMinor)}`)}</title></circle>`)
     .join('');
 
   const pathLen = Math.round(points.reduce((acc, [px, py], i) => {
@@ -84,9 +84,13 @@ export function balanceTrend(series, { width = 860, height = 260 } = {}) {
       ${zeroLine}
       <path class="chart__area" d="${area}" />
       <path class="chart__line" style="--len:${pathLen}" d="${line}" />
+      <line class="chart__scrubber" id="trend-scrubber" x1="0" y1="${pad.top}" x2="0" y2="${pad.top + innerH}" />
+      <circle class="chart__scrubber-dot" id="trend-scrubber-dot" cx="0" cy="0" r="5.5" />
       ${dots}
       ${xLabels}
-    </svg>`;
+      <rect class="chart__overlay" id="trend-overlay" x="0" y="0" width="${width}" height="${height}" fill="transparent" />
+    </svg>
+    <div class="chart__tooltip" id="trend-tooltip" aria-hidden="true"></div>`;
 }
 
 /** Compact in-bubble sparkline of monthly totals. */
