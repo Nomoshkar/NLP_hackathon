@@ -3,7 +3,7 @@
  * Enables 100% offline functionality, fast asset caching, and offline-first storage.
  */
 
-const CACHE_NAME = 'meridian-shell-v1';
+const CACHE_NAME = 'meridian-shell-v2';
 
 const PRECACHE_ASSETS = [
   './',

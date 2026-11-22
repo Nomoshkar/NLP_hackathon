@@ -952,21 +952,6 @@ boot().catch((err) => {
 
 export { state, submit, renderAll };
 
-globalThis.__testSubmit = submit;
-
-boot().catch((err) => {
-  console.error('Failed to start Meridian', err);
-  const message = err?.name === 'InvalidStateError' || /indexeddb|idb/i.test(String(err?.message))
-    ? 'This browser blocked local storage (IndexedDB). Meridian keeps your ledger on-device, so it cannot run without it. Try a normal (non-private) window.'
-    : 'Meridian failed to start. See the browser console for details.';
-  document.body.insertAdjacentHTML(
-    'afterbegin',
-    `<div class="toast is-visible is-warning" style="position:static;transform:none;margin:1rem auto;max-width:640px">${message}</div>`,
-  );
-});
-
-export { state, submit, renderAll };
-
 // Exposed for the automated browser smoke test (tools/browser-test.mjs). It is
 // harmless in production and lets the test drive the same code path the UI uses.
 globalThis.__testSubmit = submit;
